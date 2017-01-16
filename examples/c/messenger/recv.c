@@ -20,6 +20,7 @@
 
 #include "proton/message.h"
 #include "proton/messenger.h"
+#include "proton/delivery.h"
 
 #include "pncompat/misc_funcs.inc"
 #include <stdio.h>
@@ -34,121 +35,227 @@
     }                                                                        \
   }                                                                          \
 
+
 void die(const char *file, int line, const char *message)
 {
-  fprintf(stderr, "%s:%i: %s\n", file, line, message);
-  exit(1);
+	fprintf(stderr, "%s:%i: %s\n", file, line, message);
+	exit(1);
 }
 
 void usage(void)
 {
-  printf("Usage: recv [options] <addr>\n");
-  printf("-c    \tPath to the certificate file.\n");
-  printf("-k    \tPath to the private key file.\n");
-  printf("-p    \tPassword for the private key.\n");
-  printf("<addr>\tAn address.\n");
-  exit(0);
+	printf("Usage: recv [options] <addr>\n");
+	printf("-c    \tPath to the certificate file.\n");
+	printf("-k    \tPath to the private key file.\n");
+	printf("-p    \tPassword for the private key.\n");
+	printf("<addr>\tAn address.\n");
+	exit(0);
+}
+
+void check_delivery(int phase, const char *subphase, pn_delivery_t* delivery)
+{
+	if (!delivery) {
+		printf("%d%s: no delivery information\n", phase, (subphase ? subphase : ""));
+		return;
+	}
+
+	if (pn_delivery_settled(delivery)) {
+		printf("%d%s: Delivery settled\n", phase, (subphase ? subphase : ""));
+	}
+	else if (pn_delivery_partial(delivery)) {
+		printf("%d%s: Delivery partial\n", phase, (subphase ? subphase : ""));
+	}
+	else if (pn_delivery_updated(delivery)) {
+		printf("%d%s: Delivery updated\n", phase, (subphase ? subphase : ""));
+	}
+	else if (pn_delivery_readable(delivery)) {
+		printf("%d%s: Delivery readable\n", phase, (subphase ? subphase : ""));
+	}
+	else if (pn_delivery_writable(delivery)) {
+		printf("%d%s: Delivery writeable\n", phase, (subphase ? subphase : ""));
+	}
+	else {
+		printf("%d%s: Delivery state unknown\n", phase, (subphase ? subphase : ""));
+	}
+
+	uint64_t lstate = pn_delivery_local_state(delivery);
+	switch (lstate) {
+	case PN_RECEIVED:
+	{
+		printf("%d%s: local received\n", phase, (subphase ? subphase : ""));
+		break;
+	}
+	case PN_ACCEPTED:
+	{
+		printf("%d%s: local accepted\n", phase, (subphase ? subphase : ""));
+		break;
+	}
+	case PN_REJECTED:
+	{
+		printf("%d%s: local rejected\n", phase, (subphase ? subphase : ""));
+		break;
+	}
+	case PN_RELEASED:
+	{
+		printf("%d%s: local released\n", phase, (subphase ? subphase : ""));
+		break;
+	}
+	case PN_MODIFIED:
+	{
+		printf("%d%s: local modified\n", phase, (subphase ? subphase : ""));
+		break;
+	}
+
+	}
+
+	uint64_t rstate = pn_delivery_remote_state(delivery);
+	switch (rstate) {
+	case PN_RECEIVED:
+	{
+		printf("%d%s: remote received\n", phase, (subphase ? subphase : ""));
+		break;
+	}
+	case PN_ACCEPTED:
+	{
+		printf("%d%s: remote accepted\n", phase, (subphase ? subphase : ""));
+		break;
+	}
+	case PN_REJECTED:
+	{
+		printf("%d%s: remote rejected\n", phase, (subphase ? subphase : ""));
+		break;
+	}
+	case PN_RELEASED:
+	{
+		printf("%d%s: remote released\n", phase, (subphase ? subphase : ""));
+		break;
+	}
+	case PN_MODIFIED:
+	{
+		printf("%d%s: remote modified\n", phase, (subphase ? subphase : ""));
+		break;
+	}
+
+	}
 }
 
 int main(int argc, char** argv)
 {
-  char* certificate = NULL;
-  char* privatekey = NULL;
-  char* password = NULL;
-  char* address = (char *) "amqp://~0.0.0.0";
-  int c;
+	char* certificate = NULL;
+	char* privatekey = NULL;
+	char* password = NULL;
+	char* address = (char *) "amqp://~0.0.0.0";
+	int c;
 
-  pn_message_t * message;
-  pn_messenger_t * messenger;
+	pn_message_t * message;
+	pn_messenger_t * messenger;
 
-  message = pn_message();
-  messenger = pn_messenger(NULL);
+	message = pn_message();
+	messenger = pn_messenger(NULL);
 
-  opterr = 0;
+	opterr = 0;
 
-  while((c = getopt(argc, argv, "hc:k:p:")) != -1)
-  {
-    switch(c)
-    {
-    case 'h':
-      usage();
-      break;
+	while ((c = getopt(argc, argv, "hc:k:p:")) != -1) {
+		switch (c) {
+		case 'h':
+			usage();
+			break;
 
-    case 'c': certificate = optarg; break;
-    case 'k': privatekey = optarg; break;
-    case 'p': password = optarg; break;
+		case 'c': certificate = optarg;
+			break;
+		case 'k': privatekey = optarg;
+			break;
+		case 'p': password = optarg;
+			break;
 
-    case '?':
-      if(optopt == 'c' ||
-         optopt == 'k' ||
-         optopt == 'p')
-      {
-        fprintf(stderr, "Option -%c requires an argument.\n", optopt);
-      }
-      else if(isprint(optopt))
-      {
-        fprintf(stderr, "Unknown option `-%c'.\n", optopt);
-      }
-      else
-      {
-        fprintf(stderr, "Unknown option character `\\x%x'.\n", optopt);
-      }
-      return 1;
-    default:
-      abort();
-    }
-  }
+		case '?':
+			if (optopt == 'c' ||
+				optopt == 'k' ||
+				optopt == 'p') {
+				fprintf(stderr, "Option -%c requires an argument.\n", optopt);
+			}
+			else if (isprint(optopt)) {
+				fprintf(stderr, "Unknown option `-%c'.\n", optopt);
+			}
+			else {
+				fprintf(stderr, "Unknown option character `\\x%x'.\n", optopt);
+			}
+			return 1;
+		default:
+			abort();
+		}
+	}
 
-  if (optind < argc)
-  {
-    address = argv[optind];
-  }
+	if (optind < argc) {
+		address = argv[optind];
+	}
 
-  /* load the various command line options if they're set */
-  if(certificate)
-  {
-    pn_messenger_set_certificate(messenger, certificate);
-  }
+	/* load the various command line options if they're set */
+	if (certificate) {
+		pn_messenger_set_certificate(messenger, certificate);
+	}
 
-  if(privatekey)
-  {
-    pn_messenger_set_private_key(messenger, privatekey);
-  }
+	if (privatekey) {
+		pn_messenger_set_private_key(messenger, privatekey);
+	}
 
-  if(password)
-  {
-    pn_messenger_set_password(messenger, password);
-  }
+	if (password) {
+		pn_messenger_set_password(messenger, password);
+	}
 
-  pn_messenger_start(messenger);
-  check(messenger);
+	pn_messenger_start(messenger);
+	check(messenger);
 
-  pn_messenger_subscribe(messenger, address);
-  check(messenger);
+	pn_messenger_subscribe(messenger, address);
+	check(messenger);
 
-  for(;;)
-  {
-    pn_messenger_recv(messenger, 1024);
-    check(messenger);
+	const int window = 10;
+	pn_messenger_set_incoming_window(messenger, window);
+	// pn_messenger_set_rcv_settle_mode(messenger, PN_RCV_FIRST);
 
-    while(pn_messenger_incoming(messenger))
-    {
-      pn_messenger_get(messenger, message);
-      check(messenger);
 
-      {
-      char buffer[1024];
-      size_t buffsize = sizeof(buffer);
-      const char* subject = pn_message_get_subject(message);
-      pn_data_t *body = pn_message_body(message);
-      pn_data_format(body, buffer, &buffsize);
+	int i = 0;
+	for (;;) {
 
-      printf("Address: %s\n", pn_message_get_address(message));
-      printf("Subject: %s\n", subject ? subject : "(no subject)");
-      printf("Content: %s\n", buffer);
-      }
-    }
-  }
+		pn_messenger_recv(messenger, 1024);
+		check(messenger);
 
-  return 0;
+
+		while (pn_messenger_incoming(messenger)) {
+			pn_messenger_get(messenger, message);
+			check(messenger);
+
+			{
+				i++;
+
+				char buffer[1024];
+				size_t buffsize = sizeof (buffer);
+				const char* subject = pn_message_get_subject(message);
+				pn_data_t *body = pn_message_body(message);
+				pn_data_format(body, buffer, &buffsize);
+
+				printf("Address: %s\n", pn_message_get_address(message));
+				printf("Subject: %s\n", subject ? subject : "(no subject)");
+				printf("Content: %s\n", buffer);
+
+				if ((i % window) == 0) {
+					pn_tracker_t tracker = pn_messenger_incoming_tracker(messenger);
+					pn_delivery_t *delivery = pn_messenger_delivery(messenger, tracker);
+
+					check_delivery(1, " before accept", delivery);
+					pn_messenger_accept(messenger, tracker, PN_CUMULATIVE);
+					check_delivery(2, " after accept", delivery);
+
+					pn_messenger_settle(messenger, tracker, PN_CUMULATIVE);
+					check_delivery(3, " after settle", delivery);
+				}
+			}
+		}
+
+
+
+
+	}
+
+	return 0;
 }
